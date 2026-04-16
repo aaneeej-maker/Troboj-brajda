@@ -14,17 +14,26 @@ def dobi_leta():
 
 leta_vsa = dobi_leta()
 
-# --- 2. POMOŽNE FUNKCIJE (Z VAROVALKO) ---
+# --- 2. POMOŽNE FUNKCIJE ---
 def formatiraj_v_minute(sekunde):
-    # Varovalka za neveljavne vnose (None, nan, besedilo)
     try:
         sek_float = float(sekunde)
         if sek_float <= 0: return "0:00,00"
         minute = int(sek_float // 60)
         preostale_sekunde = sek_float % 60
         return f"{minute}:{preostale_sekunde:05.2f}".replace(".", ",")
-    except (ValueError, TypeError):
+    except:
         return "0:00,00"
+
+def pobarvaj_stopnicke(row):
+    """Vrne barvo ozadja glede na osvojeno mesto."""
+    if row["Mesto"] == 1:
+        return ['background-color: rgba(255, 215, 0, 0.3)'] * len(row)  # Zlata
+    elif row["Mesto"] == 2:
+        return ['background-color: rgba(192, 192, 192, 0.3)'] * len(row) # Srebrna
+    elif row["Mesto"] == 3:
+        return ['background-color: rgba(205, 127, 50, 0.3)'] * len(row)  # Bronasta
+    return [''] * len(row)
 
 def calc_pts(row, razred_ime):
     try:
@@ -68,9 +77,7 @@ fn = os.path.join(pot_l, f"baza_{spol}_{razred.replace(' ', '_')}.csv")
 cols = ["#", "Ime in Priimek", "60m [s]", "Točke (60m)", "Daljina [m]", "Točke (Daljina)", "600m [s]", "Točke (600m)", "SKUPAJ"]
 
 if os.path.exists(fn): 
-    df = pd.read_csv(fn)
-    # Odpravimo morebitne None vrednosti takoj ob nalaganju
-    df = df.fillna(0)
+    df = pd.read_csv(fn).fillna(0)
     for c in cols:
         if c not in df.columns: df[c] = 0.0
     df = df[cols]
@@ -106,22 +113,26 @@ if st.button("🚀 SHRANI", use_container_width=True):
         st.success("Shranjeno!")
         st.rerun()
 
-# --- 6. REZULTATI ---
+# --- 6. REZULTATI Z BARVANJEM ---
 dejanski = ed[ed["Ime in Priimek"].fillna("").str.strip() != ""].copy()
 if not dejanski.empty:
     st.divider()
     dejanski[["Točke (60m)","Točke (Daljina)","Točke (600m)","SKUPAJ"]] = dejanski.apply(lambda r: calc_pts(r, razred), axis=1)
-    
-    # Zdaj funkcija formatiraj_v_minute ne bo več "pokala", če dobi None
     dejanski["600m [min:sek]"] = dejanski["600m [s]"].apply(formatiraj_v_minute)
     
+    # Razvrščanje
     res = dejanski.sort_values("SKUPAJ", ascending=False).reset_index(drop=True)
     res.index += 1
     res["Mesto"] = res.index
     
     prikaz_cols = ["Mesto", "#", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [s]", "600m [min:sek]", "SKUPAJ"]
+    
     st.subheader("📊 Trenutni vrstni red")
-    st.dataframe(res[prikaz_cols], use_container_width=True)
+    
+    # APLIKACIJA BARV NA TABELO
+    styled_res = res[prikaz_cols].style.apply(pobarvaj_stopnicke, axis=1)
+    
+    st.dataframe(styled_res, use_container_width=True)
     
     st.write("📥 **Izvoz:**")
     st.download_button("📊 Izvozi Excel", to_excel(res), f"Troboj_{razred}.xlsx")
