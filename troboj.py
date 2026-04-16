@@ -14,12 +14,17 @@ def dobi_leta():
 
 leta_vsa = dobi_leta()
 
-# --- 2. POMOŽNE FUNKCIJE ---
+# --- 2. POMOŽNE FUNKCIJE (Z VAROVALKO) ---
 def formatiraj_v_minute(sekunde):
-    if sekunde <= 0: return "0:00,00"
-    minute = int(sekunde // 60)
-    preostale_sekunde = sekunde % 60
-    return f"{minute}:{preostale_sekunde:05.2f}".replace(".", ",")
+    # Varovalka za neveljavne vnose (None, nan, besedilo)
+    try:
+        sek_float = float(sekunde)
+        if sek_float <= 0: return "0:00,00"
+        minute = int(sek_float // 60)
+        preostale_sekunde = sek_float % 60
+        return f"{minute}:{preostale_sekunde:05.2f}".replace(".", ",")
+    except (ValueError, TypeError):
+        return "0:00,00"
 
 def calc_pts(row, razred_ime):
     try:
@@ -60,16 +65,12 @@ pot_l = os.path.join("Podatki", leto.replace("/","_"))
 if not os.path.exists(pot_l): os.makedirs(pot_l)
 fn = os.path.join(pot_l, f"baza_{spol}_{razred.replace(' ', '_')}.csv")
 
-# Želeni stolpci v bazi
 cols = ["#", "Ime in Priimek", "60m [s]", "Točke (60m)", "Daljina [m]", "Točke (Daljina)", "600m [s]", "Točke (600m)", "SKUPAJ"]
 
 if os.path.exists(fn): 
     df = pd.read_csv(fn)
-    # Če smo prej imeli stolpec [vnos], ga preimenujemo ali pobrišemo
-    if "600m [vnos]" in df.columns and "600m [s]" not in df.columns:
-        df = df.rename(columns={"600m [vnos]": "600m [s]"})
-    
-    # Prisilimo stolpce na pravo obliko
+    # Odpravimo morebitne None vrednosti takoj ob nalaganju
+    df = df.fillna(0)
     for c in cols:
         if c not in df.columns: df[c] = 0.0
     df = df[cols]
@@ -84,8 +85,9 @@ st.title(f"🏆 {leto} | {razred}: {izbira_spola}")
 
 config = {
     "#": st.column_config.NumberColumn("št.", disabled=True, width="small"),
-    "60m [s]": st.column_config.NumberColumn("60m [s]", step=0.01, format="%.2f"),
-    "600m [s]": st.column_config.NumberColumn("600m [sekunde]", step=0.01, format="%.2f", help="Vpiši samo sekunde, npr. 122.45"),
+    "60m [s]": st.column_config.NumberColumn("60m [s]", step=0.01, format="%.2f", default=0.0),
+    "600m [s]": st.column_config.NumberColumn("600m [sek]", step=0.01, format="%.2f", default=0.0),
+    "Daljina [m]": st.column_config.NumberColumn("Daljina [m]", step=0.01, format="%.2f", default=0.0),
     "Točke (60m)": st.column_config.NumberColumn("🔒 T_60", disabled=True),
     "Točke (Daljina)": st.column_config.NumberColumn("🔒 T_Dalj", disabled=True),
     "Točke (600m)": st.column_config.NumberColumn("🔒 T_600", disabled=True),
@@ -99,28 +101,26 @@ if st.button("🚀 SHRANI", use_container_width=True):
     if not kon.empty:
         kon["#"] = range(1, len(kon) + 1)
         kon[["Točke (60m)","Točke (Daljina)","Točke (600m)","SKUPAJ"]] = kon.apply(lambda r: calc_pts(r, razred), axis=1)
-        kon = kon[cols]
+        kon = kon[cols].fillna(0)
         kon.to_csv(fn, index=False)
         st.success("Shranjeno!")
         st.rerun()
 
-# --- 6. REZULTATI S PRETRAMBO ---
+# --- 6. REZULTATI ---
 dejanski = ed[ed["Ime in Priimek"].fillna("").str.strip() != ""].copy()
 if not dejanski.empty:
     st.divider()
-    # Preračun točk za prikaz v živo
     dejanski[["Točke (60m)","Točke (Daljina)","Točke (600m)","SKUPAJ"]] = dejanski.apply(lambda r: calc_pts(r, razred), axis=1)
     
-    # USTVARIMO STOLPEC ZA MINUTE (SAMO ZA PRIKAZ)
+    # Zdaj funkcija formatiraj_v_minute ne bo več "pokala", če dobi None
     dejanski["600m [min:sek]"] = dejanski["600m [s]"].apply(formatiraj_v_minute)
     
     res = dejanski.sort_values("SKUPAJ", ascending=False).reset_index(drop=True)
     res.index += 1
     res["Mesto"] = res.index
-    st.subheader("📊 Trenutni vrstni red")
     
-    # Prikazna tabela: vključuje "človeški" format 600m
     prikaz_cols = ["Mesto", "#", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [s]", "600m [min:sek]", "SKUPAJ"]
+    st.subheader("📊 Trenutni vrstni red")
     st.dataframe(res[prikaz_cols], use_container_width=True)
     
     st.write("📥 **Izvoz:**")
