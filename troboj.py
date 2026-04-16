@@ -18,27 +18,23 @@ leta_vsa = dobi_leta()
 @st.dialog("🏆 Najboljši & stopničke")
 def prikazi_stopnicke(leto_pot):
     t_fanti, t_punce = st.tabs(["👦 Fanti", "👧 Punce"])
-    
     razredna_stopnja = [f"{i}. razred" for i in range(1, 6)]
     predmetna_stopnja = [f"{i}. razred" for i in range(6, 10)]
     
     for idx, s_ime in enumerate(["Fanti", "Punce"]):
         with [t_fanti, t_punce][idx]:
             sub1, sub2 = st.tabs(["🏫 Razredna (1-5)", "🎓 Predmetna (6-9)"])
-            
             for sub_tab, stopnja_list, naslov in [(sub1, razredna_stopnja, "Razredna"), (sub2, predmetna_stopnja, "Predmetna")]:
                 with sub_tab:
                     st.subheader(f"🥇 Skupne stopničke ({naslov})")
                     v_sez = []
                     for r in stopnja_list:
-                        r_fix = r.replace(' ', '_')
-                        p = os.path.join(leto_pot, f"baza_{s_ime}_{r_fix}.csv")
+                        p = os.path.join(leto_pot, f"baza_{s_ime}_{r.replace(' ', '_')}.csv")
                         if os.path.exists(p):
                             tdf = pd.read_csv(p)
                             if not tdf.empty and "SKUPAJ" in tdf.columns:
                                 tdf["R"] = r
                                 v_sez.append(tdf)
-                    
                     if v_sez:
                         df_stopnja = pd.concat(v_sez)
                         top3 = df_stopnja[df_stopnja["SKUPAJ"] > 0].sort_values("SKUPAJ", ascending=False).head(3)
@@ -47,35 +43,32 @@ def prikazi_stopnicke(leto_pot):
                             for i, (_, row) in enumerate(top3.iterrows()):
                                 with cols[i]:
                                     st.metric(label=f"{i+1}. mesto ({row['R']})", value=f"{int(row['SKUPAJ'])} točk", delta=row['Ime in Priimek'], delta_color="off")
-                    else:
-                        st.info("Ni podatkov za to stopnjo.")
+                    else: st.info("Ni podatkov.")
 
-# --- 3. FUNKCIJE ZA IZRAČUN (DVOJNA LOGIKA) ---
+# --- 3. FUNKCIJE ZA IZRAČUN ---
 def calc_pts(row, razred_ime):
     try:
         s60 = float(row['60m [s]']) if pd.notnull(row['60m [s]']) and str(row['60m [s]']).strip() != "" else 0
         dalj = float(row['Daljina [m]']) if pd.notnull(row['Daljina [m]']) and str(row['Daljina [m]']).strip() != "" else 0
-        s600 = float(row['600m [s]']) if pd.notnull(row['600m [s]']) and str(row['600m [s]']).strip() != "" else 0
+        
+        # Logika za 600m: minute + sekunde
+        m600 = float(row['600m [min]']) if pd.notnull(row['600m [min]']) else 0
+        sek600_ostanek = float(row['600m [s]']) if pd.notnull(row['600m [s]']) else 0
+        s600 = (m600 * 60) + sek600_ostanek
+        
         r_num = int(razred_ime.split('.')[0])
     except:
         return pd.Series([0, 0, 0, 0])
 
     t6, td, t60 = 0, 0, 0
-    
     if r_num <= 5:
-        if s60 > 0 and (17.78 - s60) > 0: 
-            t6 = int(8 * (17.78 - s60)**2.1)
-        if dalj > 0: 
-            td = int(2.2062 * ((dalj * 100) - 130))
-        if s600 > 0 and (240 - s600) > 0: 
-            t60 = int(0.625 * (240 - s600)**1.51)
+        if s60 > 0 and (17.78 - s60) > 0: t6 = int(8 * (17.78 - s60)**2.1)
+        if dalj > 0: td = int(2.2062 * ((dalj * 100) - 130))
+        if s600 > 0 and (240 - s600) > 0: t60 = int(0.625 * (240 - s600)**1.51)
     else:
-        if s60 > 0 and (14.6 - s60) > 0:
-            t6 = int(7.48676 * (14.6 - s60)**2.5)
-        if dalj > 0 and (dalj - 1.25) > 0:
-            td = int(171.91361 * (dalj - 1.25)**1.1)
-        if s600 > 0 and (175.43 - s600) > 0:
-            t60 = int(0.089752 * (175.43 - s600)**2.1)
+        if s60 > 0 and (14.6 - s60) > 0: t6 = int(7.48676 * (14.6 - s60)**2.5)
+        if dalj > 0 and (dalj - 1.25) > 0: td = int(171.91361 * (dalj - 1.25)**1.1)
+        if s600 > 0 and (175.43 - s600) > 0: t60 = int(0.089752 * (175.43 - s600)**2.1)
             
     return pd.Series([t6, td, t60, t6+td+t60])
 
@@ -99,21 +92,26 @@ if st.sidebar.button("🏆 NAJBOLJŠI & STOPNIČKE", use_container_width=True):
 pot_l = os.path.join("Podatki", leto.replace("/","_"))
 if not os.path.exists(pot_l): os.makedirs(pot_l)
 fn = os.path.join(pot_l, f"baza_{spol}_{razred.replace(' ', '_')}.csv")
-cols = ["#", "Ime in Priimek", "60m [s]", "Točke (60m)", "Daljina [m]", "Točke (Daljina)", "600m [s]", "Točke (600m)", "SKUPAJ"]
+# Dodan stolpec 600m [min]
+cols = ["#", "Ime in Priimek", "60m [s]", "Točke (60m)", "Daljina [m]", "Točke (Daljina)", "600m [min]", "600m [s]", "Točke (600m)", "SKUPAJ"]
 
 if os.path.exists(fn): 
     df = pd.read_csv(fn)
+    # Če v stari datoteki manjka stolpec za minute, ga dodamo
+    if "600m [min]" not in df.columns:
+        df.insert(6, "600m [min]", 0)
 else:
     df = pd.DataFrame(columns=cols)
 
-if df.empty: 
-    df = pd.DataFrame([[1, ""] + [0.0]*7], columns=cols)
+if df.empty: df = pd.DataFrame([[1, ""] + [0.0]*8], columns=cols)
 
 # --- 6. UI ---
 st.title(f"🏆 {leto} | {razred}: {spol}")
 
 config = {
     "#": st.column_config.NumberColumn("št.", disabled=True, width="small"),
+    "600m [min]": st.column_config.NumberColumn("min", min_value=0, max_value=10, step=1),
+    "600m [s]": st.column_config.NumberColumn("sek", min_value=0.0, max_value=59.9, step=0.1),
     "Točke (60m)": st.column_config.NumberColumn("🔒", disabled=True),
     "Točke (Daljina)": st.column_config.NumberColumn("🔒", disabled=True),
     "Točke (600m)": st.column_config.NumberColumn("🔒", disabled=True),
@@ -133,15 +131,12 @@ if st.button("🚀 SHRANI", use_container_width=True):
         st.rerun()
 
 # --- 7. PRIKAZ REZULTATOV ---
-
 dejanski_podatki = ed[ed["Ime in Priimek"].fillna("").str.strip() != ""].copy()
-
 if not dejanski_podatki.empty:
     st.divider()
     dejanski_podatki[["Točke (60m)","Točke (Daljina)","Točke (600m)","SKUPAJ"]] = dejanski_podatki.apply(lambda r: calc_pts(r, razred), axis=1)
     res = dejanski_podatki.sort_values("SKUPAJ", ascending=False).reset_index(drop=True)
     res.index += 1
-    # Ustvarimo stolpec 'Mesto', ki ga vzamemo iz indeksa (1, 2, 3...)
     res["Mesto"] = res.index
     
     st.subheader("📊 Trenutni vrstni red")
@@ -152,6 +147,7 @@ if not dejanski_podatki.empty:
     with c1:
         st.download_button("📊 Excel (Vsi podatki)", to_excel(res), f"Troboj_{leto.replace('/','_')}_{razred}.xlsx", use_container_width=True)
     with c2:
-        # TUKAJ SMO DODALI "Mesto" v seznam stolpcev za izvoz meritev
-        meritve_z_mestom = res[["Mesto", "#", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [s]"]]
+        meritve_z_mestom = res[["Mesto", "#", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [min]", "600m [s]"]]
         st.download_button("⏱️ Excel (Meritve + Vrstni red)", to_excel(meritve_z_mestom), f"Meritve_{leto.replace('/','_')}_{razred}.xlsx", use_container_width=True)
+
+st.markdown("<br><hr><center><small>Izdelal: Anej Nagode, Rezultatski izračun: Luka Mrakič, 2026</small></center>", unsafe_allow_html=True)
