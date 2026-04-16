@@ -120,26 +120,25 @@ if not dejanski.empty:
     dejanski[["Točke (60m)","Točke (Daljina)","Točke (600m)","SKUPAJ"]] = dejanski.apply(lambda r: calc_pts(r, razred), axis=1)
     dejanski["600m [min:sek]"] = dejanski["600m [s]"].apply(formatiraj_v_minute)
     
-    # Razvrščanje za vse tabele
+    # Razvrščanje
     res_vse = dejanski.sort_values("SKUPAJ", ascending=False).reset_index(drop=True)
     res_vse.index += 1
     res_vse["Mesto"] = res_vse.index
 
-    # 6a. POLNA TABELA (vse točke)
-    st.subheader("📊 Polni rezultati (s točkami)")
+    # 6a. POLNA TABELA (vizualna na ekranu)
+    st.subheader("📊 Trenutni vrstni red")
     prikaz_polni = ["Mesto", "#", "Ime in Priimek", "60m [s]", "Točke (60m)", "Daljina [m]", "Točke (Daljina)", "600m [s]", "600m [min:sek]", "Točke (600m)", "SKUPAJ"]
     st.dataframe(res_vse[prikaz_polni].style.apply(pobarvaj_stopnicke, axis=1), use_container_width=True)
 
-    # 6b. ČISTA TABELA (brez vmesnih točk - SAMO REZULTATI)
-    st.subheader("📋 Pregled brez točk (za objavo)")
-    prikaz_cisti = ["Mesto", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [min:sek]", "SKUPAJ"]
-    st.dataframe(res_vse[prikaz_cisti].style.apply(pobarvaj_stopnicke, axis=1), use_container_width=True)
-    
+    # 6b. IZVOZNI DEL (Gumbi)
     st.write("📥 **Izvoz:**")
     c1, c2 = st.columns(2)
     with c1:
-        st.download_button("📊 Izvozi vse (Excel)", to_excel(res_vse[prikaz_polni]), f"Polni_rezultati_{razred}.xlsx")
+        # Polni izvoz
+        st.download_button("📊 Izvozi vse (s točkami)", to_excel(res_vse[prikaz_polni]), f"Polni_rezultati_{razred}.xlsx")
     with c2:
-        st.download_button("📋 Izvozi za objavo (Excel)", to_excel(res_vse[prikaz_cisti]), f"Uradni_rezultati_{razred}.xlsx")
+        # Čisti izvoz: Brez točkovanja in brez vsote točk
+        prikaz_brez_tock = ["Mesto", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [min:sek]"]
+        st.download_button("📋 Izvozi za objavo (brez točk)", to_excel(res_vse[prikaz_brez_tock]), f"Uradni_rezultati_{razred}.xlsx")
 
 st.markdown("<br><hr><center><small>Izdelal: Anej Nagode, 2026</small></center>", unsafe_allow_html=True)
