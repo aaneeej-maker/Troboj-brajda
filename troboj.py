@@ -47,10 +47,12 @@ def prikazi_stopnicke(leto_pot):
 # --- 3. IZRAČUN TOČK ---
 def calc_pts(row, razred_ime):
     try:
+        # 60m s stotinkami
         s60 = float(row['60m [s]']) if pd.notnull(row['60m [s]']) else 0
         dalj = float(row['Daljina [m]']) if pd.notnull(row['Daljina [m]']) else 0
         
-        m600 = float(row['600m [min]']) if pd.notnull(row['600m [min]']) else 0
+        # 600m: Minute (cela števila) + Sekunde (z decimalkami za stotinke)
+        m600 = int(float(row['600m [min]'])) if pd.notnull(row['600m [min]']) else 0
         sek600 = float(row['600m [sek]']) if pd.notnull(row['600m [sek]']) else 0
         s600 = (m600 * 60) + sek600
         
@@ -78,8 +80,6 @@ def to_excel(df_in):
 # --- 4. SIDEBAR ---
 st.sidebar.title("🏃‍♂️ TROBOJ")
 leto = st.sidebar.selectbox("Leto:", leta_vsa, index=len(leta_vsa)-1)
-
-# Tukaj smo spremenili prikaz v "Fantje"
 izbira_spola = st.sidebar.radio("Spol:", ["Fantje", "Punce"])
 spol = "Fanti" if izbira_spola == "Fantje" else "Punce"
 
@@ -111,8 +111,9 @@ st.title(f"🏆 {leto} | {razred}: {izbira_spola}")
 
 config = {
     "#": st.column_config.NumberColumn("št.", disabled=True, width="small"),
+    "60m [s]": st.column_config.NumberColumn("60m [s]", step=0.01, format="%.2f"),
     "600m [min]": st.column_config.NumberColumn("600m (min)", step=1, format="%d"),
-    "600m [sek]": st.column_config.NumberColumn("600m (sek)", step=0.01, format="%.2f"),
+    "600m [sek]": st.column_config.NumberColumn("600m (sek.stot)", step=0.01, format="%.2f", help="Vnesi sekunde in stotinke, npr. 01.02"),
     "Točke (60m)": st.column_config.NumberColumn("🔒 T_60", disabled=True),
     "Točke (Daljina)": st.column_config.NumberColumn("🔒 T_Dalj", disabled=True),
     "Točke (600m)": st.column_config.NumberColumn("🔒 T_600", disabled=True),
