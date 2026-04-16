@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import os, io
+import os, io, re
 
 # --- 1. OSNOVA ---
 st.set_page_config(page_title="Atletski Troboj PRO", layout="wide", page_icon="🏃‍♂️")
@@ -44,18 +44,34 @@ def prikazi_stopnicke(leto_pot):
                                     st.metric(label=f"{i+1}. mesto ({row['R']})", value=f"{int(row['SKUPAJ'])} točk", delta=row['Ime in Priimek'], delta_color="off")
                     else: st.info("Ni podatkov.")
 
-# --- 3. IZRAČUN TOČK ---
+# --- 3. LOGIKA ZA ČAS (600m) ---
+def parse_600m(vnos):
+    """Pretvori formate kot so '2:33.45', '2.33.45' ali '133.45' v sekunde."""
+    if pd.isna(vnos) or vnos == "" or vnos == 0 or vnos == "0":
+        return 0.0
+    vnos = str(vnos).replace(",", ".").strip()
+    
+    # Preveri format min:sek.stot (npr. 2:33.45 ali 2.33.45)
+    deli = re.split(r'[:\s]', vnos) 
+    # Če je vnesel s piko npr 2.33.45, ločimo samo če so trije deli
+    if len(deli) == 1 and vnos.count('.') >= 2:
+        deli = vnos.split('.')
+        
+    try:
+        if len(deli) >= 2:
+            minute = float(deli[0])
+            sekunde = float(".".join(deli[1:]))
+            return (minute * 60) + sekunde
+        else:
+            return float(vnos)
+    except:
+        return 0.0
+
 def calc_pts(row, razred_ime):
     try:
-        # 60m s stotinkami
         s60 = float(row['60m [s]']) if pd.notnull(row['60m [s]']) else 0
         dalj = float(row['Daljina [m]']) if pd.notnull(row['Daljina [m]']) else 0
-        
-        # 600m: Minute (cela števila) + Sekunde (z decimalkami za stotinke)
-        m600 = int(float(row['600m [min]'])) if pd.notnull(row['600m [min]']) else 0
-        sek600 = float(row['600m [sek]']) if pd.notnull(row['600m [sek]']) else 0
-        s600 = (m600 * 60) + sek600
-        
+        s600 = parse_600m(row['600m [vnos]'])
         r_num = int(razred_ime.split('.')[0])
     except: return pd.Series([0, 0, 0, 0, 0])
 
@@ -68,7 +84,6 @@ def calc_pts(row, razred_ime):
         if s60 > 0 and (14.6 - s60) > 0: t6 = int(7.48676 * (14.6 - s60)**2.5)
         if dalj > 0 and (dalj - 1.25) > 0: td = int(171.91361 * (dalj - 1.25)**1.1)
         if s600 > 0 and (175.43 - s600) > 0: t60 = int(0.089752 * (175.43 - s600)**2.1)
-    
     return pd.Series([t6, td, t60, t6+td+t60, s600])
 
 def to_excel(df_in):
@@ -93,10 +108,14 @@ pot_l = os.path.join("Podatki", leto.replace("/","_"))
 if not os.path.exists(pot_l): os.makedirs(pot_l)
 fn = os.path.join(pot_l, f"baza_{spol}_{razred.replace(' ', '_')}.csv")
 
-cols = ["#", "Ime in Priimek", "60m [s]", "Točke (60m)", "Daljina [m]", "Točke (Daljina)", "600m [min]", "600m [sek]", "Točke (600m)", "SKUPAJ"]
+cols = ["#", "Ime in Priimek", "60m [s]", "Točke (60m)", "Daljina [m]", "Točke (Daljina)", "600m [vnos]", "Točke (600m)", "SKUPAJ"]
 
 if os.path.exists(fn): 
     df = pd.read_csv(fn)
+    # Če imamo še stare stolpce (min/sek), jih združimo v vnos
+    if "600m [min]" in df.columns and "600m [sek]" in df.columns:
+        df["600m [vnos]"] = df["600m [min]"].astype(str) + ":" + df["600m [sek]"].astype(str)
+    
     for c in cols:
         if c not in df.columns: df[c] = 0.0
     df = df[cols]
@@ -104,7 +123,8 @@ else:
     df = pd.DataFrame(columns=cols)
 
 if df.empty: 
-    df = pd.DataFrame([[1, ""] + [0.0]*8], columns=cols)
+    df = pd.DataFrame([[1, ""] + [0.0]*7], columns=cols)
+    df["600m [vnos]"] = "0:00.00"
 
 # --- 6. UI ---
 st.title(f"🏆 {leto} | {razred}: {izbira_spola}")
@@ -112,8 +132,7 @@ st.title(f"🏆 {leto} | {razred}: {izbira_spola}")
 config = {
     "#": st.column_config.NumberColumn("št.", disabled=True, width="small"),
     "60m [s]": st.column_config.NumberColumn("60m [s]", step=0.01, format="%.2f"),
-    "600m [min]": st.column_config.NumberColumn("600m (min)", step=1, format="%d"),
-    "600m [sek]": st.column_config.NumberColumn("600m (sek.stot)", step=0.01, format="%.2f", help="Vnesi sekunde in stotinke, npr. 01.02"),
+    "600m [vnos]": st.column_config.TextColumn("600m (min:sek.stot)", help="Vpiši npr. 2:33.45 ali 133.45"),
     "Točke (60m)": st.column_config.NumberColumn("🔒 T_60", disabled=True),
     "Točke (Daljina)": st.column_config.NumberColumn("🔒 T_Dalj", disabled=True),
     "Točke (600m)": st.column_config.NumberColumn("🔒 T_600", disabled=True),
@@ -145,12 +164,12 @@ if not dejanski.empty:
     res["Mesto"] = res.index
     st.subheader("📊 Trenutni vrstni red")
     
-    prikaz_cols = ["Mesto", "#", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [min]", "600m [sek]", "Skupaj_sekunde", "SKUPAJ"]
+    prikaz_cols = ["Mesto", "#", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [vnos]", "Skupaj_sekunde", "SKUPAJ"]
     st.dataframe(res[prikaz_cols], use_container_width=True)
     
     st.write("📥 **Izvoz:**")
     c1, c2 = st.columns(2)
     with c1: st.download_button("📊 Excel (Vse)", to_excel(res), f"Troboj_{razred}.xlsx")
-    with c2: st.download_button("⏱️ Excel (Meritve)", to_excel(res[["Mesto", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [min]", "600m [sek]", "Skupaj_sekunde"]]), f"Meritve_{razred}.xlsx")
+    with c2: st.download_button("⏱️ Excel (Meritve)", to_excel(res[["Mesto", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [vnos]", "Skupaj_sekunde"]]), f"Meritve_{razred}.xlsx")
 
 st.markdown("<br><hr><center><small>Izdelal: Anej Nagode, 2026</small></center>", unsafe_allow_html=True)
