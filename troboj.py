@@ -49,12 +49,10 @@ def pretvori_v_sekunde(vnos):
     try:
         vnos = float(vnos)
         if vnos == 0: return 0
-        # Če je vnos npr. 2.13 (minuta.sekunda)
         if 0 < vnos < 10: 
             minute = int(vnos)
             sekunde = round((vnos - minute) * 100, 2)
             return (minute * 60) + sekunde
-        # Če je vnos npr. 133 (direktne sekunde)
         return vnos
     except: return 0
 
@@ -96,25 +94,41 @@ if st.sidebar.button("🏆 NAJBOLJŠI & STOPNIČKE", use_container_width=True):
 pot_l = os.path.join("Podatki", leto.replace("/","_"))
 if not os.path.exists(pot_l): os.makedirs(pot_l)
 fn = os.path.join(pot_l, f"baza_{spol}_{razred.replace(' ', '_')}.csv")
+
+# To so EDINI dovoljeni stolpci
 cols = ["#", "Ime in Priimek", "60m [s]", "Točke (60m)", "Daljina [m]", "Točke (Daljina)", "600m [vnos]", "Točke (600m)", "SKUPAJ"]
 
 if os.path.exists(fn): 
     df = pd.read_csv(fn)
-    if "600m [vnos]" not in df.columns: df["600m [vnos]"] = 0.0
-else: df = pd.DataFrame(columns=cols)
-if df.empty: df = pd.DataFrame([[1, ""] + [0.0]*7], columns=cols)
+    # Če obstaja stari 600m [s] in še ni novega 600m [vnos], ga prekopiramo, da ne izgubimo vnosa
+    if "600m [s]" in df.columns and "600m [vnos]" not in df.columns: 
+        df["600m [vnos]"] = df["600m [s]"]
+    elif "600m [vnos]" not in df.columns: 
+        df["600m [vnos]"] = 0.0
+    
+    # Dodamo manjkajoče stolpce
+    for c in cols:
+        if c not in df.columns: 
+            df[c] = "" if c == "Ime in Priimek" else 0.0
+            
+    # NAJPOMEMBNEJE: Vzamemo samo strogo določene stolpce (kar odstrani pretekle smeti)
+    df = df[cols]
+else: 
+    df = pd.DataFrame(columns=cols)
+
+if df.empty: 
+    df = pd.DataFrame([[1, ""] + [0.0]*7], columns=cols)
 
 # --- 6. UI ---
 st.title(f"🏆 {leto} | {razred}: {spol}")
 
 config = {
     "#": st.column_config.NumberColumn("št.", disabled=True, width="small"),
-    # Popravljen prikaz: vedno kaže 2 decimalki, da ni zmede pri vnosih kot je 2.10
     "600m [vnos]": st.column_config.NumberColumn("600m (npr. 2.13)", step=0.01, format="%.2f", help="Vpiši 2.13 za 2min 13s ALI 133 za direktne sekunde."),
-    "Točke (60m)": st.column_config.NumberColumn("🔒", disabled=True),
-    "Točke (Daljina)": st.column_config.NumberColumn("🔒", disabled=True),
-    "Točke (600m)": st.column_config.NumberColumn("🔒", disabled=True),
-    "SKUPAJ": st.column_config.NumberColumn("🔒", disabled=True)
+    "Točke (60m)": st.column_config.NumberColumn("🔒 Točke 60m", disabled=True),
+    "Točke (Daljina)": st.column_config.NumberColumn("🔒 Točke Daljina", disabled=True),
+    "Točke (600m)": st.column_config.NumberColumn("🔒 Točke 600m", disabled=True),
+    "SKUPAJ": st.column_config.NumberColumn("🔒 SKUPAJ", disabled=True)
 }
 
 ed = st.data_editor(df, num_rows="dynamic", use_container_width=True, key=f"ed_{fn}", column_config=config)
@@ -134,7 +148,6 @@ dejanski = ed[ed["Ime in Priimek"].fillna("").str.strip() != ""].copy()
 if not dejanski.empty:
     st.divider()
     dejanski[["Točke (60m)","Točke (Daljina)","Točke (600m)","SKUPAJ"]] = dejanski.apply(lambda r: calc_pts(r, razred), axis=1)
-    # Dodamo informativni stolpec za sekunde v tabelo vrstnega reda
     dejanski["600m [sekunde]"] = dejanski["600m [vnos]"].apply(pretvori_v_sekunde)
     
     res = dejanski.sort_values("SKUPAJ", ascending=False).reset_index(drop=True)
@@ -142,14 +155,12 @@ if not dejanski.empty:
     res["Mesto"] = res.index
     st.subheader("📊 Trenutni vrstni red")
     
-    # Prikaz stolpcev v spodnji tabeli
     prikaz_cols = ["Mesto", "#", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [vnos]", "600m [sekunde]", "SKUPAJ"]
     st.dataframe(res[prikaz_cols], use_container_width=True)
     
     st.write("📥 **Izvoz:**")
     c1, c2 = st.columns(2)
     with c1: st.download_button("📊 Excel (Vse)", to_excel(res), f"Troboj_{razred}.xlsx")
-    # Pri izvozu meritev damo zdaj zraven tako tvoj vnos (npr. 2.13) kot tudi preračunane sekunde (133), da imaš vse za arhiv
     with c2: st.download_button("⏱️ Excel (Meritve)", to_excel(res[["Mesto", "#", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [vnos]", "600m [sekunde]"]]), f"Meritve_{razred}.xlsx")
 
 st.markdown("<br><hr><center><small>Izdelal: Anej Nagode, 2026</small></center>", unsafe_allow_html=True)
