@@ -27,12 +27,12 @@ def formatiraj_v_minute(sekunde):
 
 def pobarvaj_stopnicke(row):
     """Vrne barvo ozadja glede na osvojeno mesto."""
-    if row["Mesto"] == 1:
-        return ['background-color: rgba(255, 215, 0, 0.3)'] * len(row)  # Zlata
-    elif row["Mesto"] == 2:
-        return ['background-color: rgba(192, 192, 192, 0.3)'] * len(row) # Srebrna
-    elif row["Mesto"] == 3:
-        return ['background-color: rgba(205, 127, 50, 0.3)'] * len(row)  # Bronasta
+    if "Mesto" in row and row["Mesto"] == 1:
+        return ['background-color: rgba(255, 215, 0, 0.3)'] * len(row)
+    elif "Mesto" in row and row["Mesto"] == 2:
+        return ['background-color: rgba(192, 192, 192, 0.3)'] * len(row)
+    elif "Mesto" in row and row["Mesto"] == 3:
+        return ['background-color: rgba(205, 127, 50, 0.3)'] * len(row)
     return [''] * len(row)
 
 def calc_pts(row, razred_ime):
@@ -113,28 +113,33 @@ if st.button("🚀 SHRANI", use_container_width=True):
         st.success("Shranjeno!")
         st.rerun()
 
-# --- 6. REZULTATI Z BARVANJEM ---
+# --- 6. REZULTATI ---
 dejanski = ed[ed["Ime in Priimek"].fillna("").str.strip() != ""].copy()
 if not dejanski.empty:
     st.divider()
     dejanski[["Točke (60m)","Točke (Daljina)","Točke (600m)","SKUPAJ"]] = dejanski.apply(lambda r: calc_pts(r, razred), axis=1)
     dejanski["600m [min:sek]"] = dejanski["600m [s]"].apply(formatiraj_v_minute)
     
-    # Razvrščanje
-    res = dejanski.sort_values("SKUPAJ", ascending=False).reset_index(drop=True)
-    res.index += 1
-    res["Mesto"] = res.index
-    
-    prikaz_cols = ["Mesto", "#", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [s]", "600m [min:sek]", "SKUPAJ"]
-    
-    st.subheader("📊 Trenutni vrstni red")
-    
-    # APLIKACIJA BARV NA TABELO
-    styled_res = res[prikaz_cols].style.apply(pobarvaj_stopnicke, axis=1)
-    
-    st.dataframe(styled_res, use_container_width=True)
+    # Razvrščanje za vse tabele
+    res_vse = dejanski.sort_values("SKUPAJ", ascending=False).reset_index(drop=True)
+    res_vse.index += 1
+    res_vse["Mesto"] = res_vse.index
+
+    # 6a. POLNA TABELA (vse točke)
+    st.subheader("📊 Polni rezultati (s točkami)")
+    prikaz_polni = ["Mesto", "#", "Ime in Priimek", "60m [s]", "Točke (60m)", "Daljina [m]", "Točke (Daljina)", "600m [s]", "600m [min:sek]", "Točke (600m)", "SKUPAJ"]
+    st.dataframe(res_vse[prikaz_polni].style.apply(pobarvaj_stopnicke, axis=1), use_container_width=True)
+
+    # 6b. ČISTA TABELA (brez vmesnih točk - SAMO REZULTATI)
+    st.subheader("📋 Pregled brez točk (za objavo)")
+    prikaz_cisti = ["Mesto", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [min:sek]", "SKUPAJ"]
+    st.dataframe(res_vse[prikaz_cisti].style.apply(pobarvaj_stopnicke, axis=1), use_container_width=True)
     
     st.write("📥 **Izvoz:**")
-    st.download_button("📊 Izvozi Excel", to_excel(res), f"Troboj_{razred}.xlsx")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.download_button("📊 Izvozi vse (Excel)", to_excel(res_vse[prikaz_polni]), f"Polni_rezultati_{razred}.xlsx")
+    with c2:
+        st.download_button("📋 Izvozi za objavo (Excel)", to_excel(res_vse[prikaz_cisti]), f"Uradni_rezultati_{razred}.xlsx")
 
 st.markdown("<br><hr><center><small>Izdelal: Anej Nagode, 2026</small></center>", unsafe_allow_html=True)
