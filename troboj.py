@@ -133,6 +133,7 @@ if st.button("🚀 SHRANI", use_container_width=True):
         st.rerun()
 
 # --- 7. PRIKAZ REZULTATOV ---
+
 dejanski_podatki = ed[ed["Ime in Priimek"].fillna("").str.strip() != ""].copy()
 
 if not dejanski_podatki.empty:
@@ -140,6 +141,8 @@ if not dejanski_podatki.empty:
     dejanski_podatki[["Točke (60m)","Točke (Daljina)","Točke (600m)","SKUPAJ"]] = dejanski_podatki.apply(lambda r: calc_pts(r, razred), axis=1)
     res = dejanski_podatki.sort_values("SKUPAJ", ascending=False).reset_index(drop=True)
     res.index += 1
+    # Ustvarimo stolpec 'Mesto', ki ga vzamemo iz indeksa (1, 2, 3...)
+    res["Mesto"] = res.index
     
     st.subheader("📊 Trenutni vrstni red")
     st.dataframe(res, use_container_width=True)
@@ -149,6 +152,6 @@ if not dejanski_podatki.empty:
     with c1:
         st.download_button("📊 Excel (Vsi podatki)", to_excel(res), f"Troboj_{leto.replace('/','_')}_{razred}.xlsx", use_container_width=True)
     with c2:
-        st.download_button("⏱️ Excel (Samo meritve)", to_excel(res[["#", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [s]"]]), f"Meritve_{leto.replace('/','_')}_{razred}.xlsx", use_container_width=True)
-
-st.markdown("<br><hr><center><small>Izdelal: Anej Nagode, Rezultatski izračun: Luka Mrakič, 2026</small></center>", unsafe_allow_html=True)
+        # TUKAJ SMO DODALI "Mesto" v seznam stolpcev za izvoz meritev
+        meritve_z_mestom = res[["Mesto", "#", "Ime in Priimek", "60m [s]", "Daljina [m]", "600m [s]"]]
+        st.download_button("⏱️ Excel (Meritve + Vrstni red)", to_excel(meritve_z_mestom), f"Meritve_{leto.replace('/','_')}_{razred}.xlsx", use_container_width=True)
